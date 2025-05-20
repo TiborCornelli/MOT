@@ -80,4 +80,4 @@ plt.xlabel("File Index")
 plt.ylabel("sigma_y Value")
 plt.title("sigma_y Values")
 plt.tight_layout()
-plt.sho
+plt.show()
