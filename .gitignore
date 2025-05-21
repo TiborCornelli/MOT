@@ -1,1 +1,7 @@
-__pycache__/*
+__pycache__
+*.gz
+*.csv
+*.png
+image_utils.py
+converter.py
+.DS_Store
