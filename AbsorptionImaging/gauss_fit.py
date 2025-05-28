@@ -1,8 +1,9 @@
 import numpy as np
-import os
 from scipy.optimize import curve_fit
 import matplotlib.pyplot as plt
 from image_utils import read_gz_file, open_all_ims_in_dir
+from scipy.ndimage import gaussian_filter
+import os
 
 
 def gaussian(x, a, x0, sigma, offset):
@@ -30,7 +31,7 @@ x0_values = []
 sigma_x_values = []
 y0_values = []
 sigma_y_values = []
-dt = 250 * 1e-6  # time step in seconds
+dt = 250 * 1e-6  # TOF step size in seconds
 start_tof = 71 * 1e-6
 time_stamps = np.arange(len(file_list)) * dt
 
@@ -39,6 +40,7 @@ time_stamps = np.arange(len(file_list)) * dt
 for file in file_list:
     img = read_gz_file(file, returnRaw=False, returnDict=False)
     cropped = img[slice(*roi["yMain"]), slice(*roi["xMain"])]
+
     projection_x = np.sum(cropped, axis=0)
     projection_y = np.sum(cropped, axis=1)
 
@@ -51,7 +53,6 @@ for file in file_list:
     sigma_x_values.append(abs(popt_x[2]))
     y0_values.append(popt_y[1] + y_length / 2 + roi["yMain"][0])
     sigma_y_values.append(abs(popt_y[2]))
-
 
 # Example
 plt.plot(
@@ -66,6 +67,21 @@ plt.plot(
 )
 plt.title(f"Gaussian Fit along x axis of image # {file[-5:-3]}")
 # plt.savefig("gaussian_fit_x.png", dpi=600)
+plt.show()
+
+# Apply 2D gauss filter
+cropped = gaussian_filter(cropped, sigma=20)
+
+plt.imshow(cropped, cmap="hot", interpolation="nearest")
+plt.colorbar(shrink=0.6)
+plt.xticks(
+    np.arange(0, x_length, 100), np.arange(roi["xMain"][0], roi["xMain"][1], 100)
+)
+plt.yticks(
+    np.arange(0, y_length, 100), np.arange(roi["yMain"][0], roi["yMain"][1], 100)
+)
+plt.title(f"Image # {file[-5:-3]} (filtered)")
+# plt.savefig("2D_image.png", dpi=600)
 plt.show()
 
 # ------- Plotting the time evolution of the fitted parameters -------
@@ -127,6 +143,7 @@ plt.title(r"Quadratic Fit for $\mu_y(t)$")
 plt.legend()
 # plt.savefig("quadratic_fit_parameters.png", dpi=600)
 plt.tight_layout()
+plt.show()
 
 # ------- Compute pixel size from acceleration -------
 
@@ -192,6 +209,7 @@ plt.title(r"Sigma Evolution for $\sigma_y(t)$")
 plt.legend()
 plt.tight_layout()
 # plt.savefig("sigma_evolution.png", dpi=600)
+plt.show()
 
 T_opt = popt_sigma_x[1]
 T_err = np.sqrt(cov_sigma_x[1][1])
