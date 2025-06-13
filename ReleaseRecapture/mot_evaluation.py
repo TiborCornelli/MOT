@@ -43,6 +43,7 @@ if __name__ == "__main__":
     )
 
     avg_ratios = np.zeros(len(time_stamps))
+    std_ratios = np.zeros(len(time_stamps))
     channel = 2
 
     # i is the index of the time stamps
@@ -73,12 +74,18 @@ if __name__ == "__main__":
 
             # Calculate the mean values for the left, middle, and offset regions
             mean_left = np.mean(ch[t < time_stamps[i, 0]])
+            std_left = np.std(ch[t < time_stamps[i, 0]])
             mean_middle = np.mean(ch[(t > time_stamps[i, 1]) & (t < time_stamps[i, 2])])
+            std_middle = np.std(ch[(t > time_stamps[i, 1]) & (t < time_stamps[i, 2])])
             offset = np.mean(ch[(t > time_stamps[i, 3]) & (t < time_stamps[i, 4])])
+            std_offset = np.std(ch[(t > time_stamps[i, 3]) & (t < time_stamps[i, 4])])
 
             N_0 = mean_left - offset
+            std_N_0 = np.sqrt(std_left**2 + std_offset**2)
             N_t = mean_middle - offset
+            std_N_t = np.sqrt(std_middle**2 + std_offset**2)
             ratio = N_t / N_0
+            std_ratio = ratio * np.sqrt((std_N_t / N_t) ** 2 + (std_N_0 / N_0) ** 2)
             ratio_sum += ratio
 
             t_min = 0
@@ -121,11 +128,10 @@ if __name__ == "__main__":
                 plt.ylabel(f"Voltage [V]")
                 plt.grid(True)
                 plt.tight_layout()
-                plt.savefig(
-                    f"CH{channel}_down_time_{round(down_times_ms[i])}.png", dpi=300
-                )
+                # plt.savefig(f"CH{channel}_down_time_{round(down_times_ms[i])}.png", dpi=300)
                 plt.show()
         avg_ratios[i] = ratio_sum / 4
+        std_ratios[i] = std_ratio
 
     ### Fit the curve
     u = 1.66053906660e-27  # kg
