@@ -31,15 +31,15 @@ x0_values = []
 sigma_x_values = []
 y0_values = []
 sigma_y_values = []
+tof_values = []
 dt = 250 * 1e-6  # TOF step size in seconds
-start_tof = 71 * 1e-6
-time_stamps = np.arange(len(file_list)) * dt
+start_tof = 71 * 1e-6  # Start time of flight in seconds
 
 # ------- Fitting Gaussian to projections -------
 
 # Select files to analyze
-min_file = 23
-max_file = 63
+min_file = 1
+max_file = 89
 
 for file in file_list:
     file_index = int(file[-5:-3])
@@ -48,6 +48,9 @@ for file in file_list:
         continue
     if file_index > max_file:
         break
+    # Outliers
+    if file_index in [64, 65, 66]:
+        continue
 
     img = read_gz_file(file, returnRaw=False, returnDict=False)
     cropped = img[slice(*roi["yMain"]), slice(*roi["xMain"])]
@@ -73,6 +76,7 @@ for file in file_list:
     sigma_x_values.append(abs(popt_x[2]))
     y0_values.append(popt_y[1] + y_length / 2 + roi["yMain"][0])
     sigma_y_values.append(abs(popt_y[2]))
+    tof_values.append(start_tof + (file_index - 3) % 20 * dt)
 
 # Example
 plt.plot(
@@ -106,26 +110,22 @@ plt.show()
 
 # ------- Plotting the time evolution of the fitted parameters -------
 
-time_stamps_ms = time_stamps * 1e3
-time_stamps_ms_selected = (
-    time_stamps_ms[min_file : (max_file + 1)] - time_stamps_ms[min_file]
-)
 plt.rcParams.update({"font.size": 12})
 plt.subplot(2, 2, 1)
-plt.scatter(time_stamps_ms_selected, y0_values, label="y0", s=12)
+plt.scatter(file_indices, y0_values, label="y0", s=12)
 plt.xlabel("Time (ms)")
 plt.ylabel(r"$\mu_y$")
 plt.subplot(2, 2, 2)
-plt.scatter(time_stamps_ms_selected, x0_values, label="x0", s=12)
+plt.scatter(file_indices, x0_values, label="x0", s=12)
 plt.xlabel("Time (ms)")
 plt.ylabel(r"$\mu_x$")
 plt.subplot(2, 2, 3)
-plt.scatter(time_stamps_ms_selected, sigma_y_values, label="sigma_y", s=12)
+plt.scatter(file_indices, sigma_y_values, label="sigma_y", s=12)
 plt.xlabel("Time (ms)")
 plt.ylabel(r"$\sigma_y$")
 plt.tight_layout()
 plt.subplot(2, 2, 4)
-plt.scatter(time_stamps_ms_selected, sigma_x_values, label="sigma_x", s=12)
+plt.scatter(file_indices, sigma_x_values, label="sigma_x", s=12)
 plt.xlabel("Time (ms)")
 plt.ylabel(r"$\sigma_x$")
 plt.tight_layout()
@@ -134,11 +134,11 @@ plt.subplots_adjust(top=0.92)
 plt.show()
 
 # ------- Compute the acceleration of the atomic cloud -------
-start = np.where(np.array(file_indices) == min_file)[0][0]
-end = np.where(np.array(file_indices) == 40)[0][0] + 1
-new_indices = file_indices[start:end]
-t = dt * np.arange(len(new_indices)) + start_tof
-t_ms = t * 1e3
+tof_values_ms = np.array(tof_values) * 1e3  # Convert to milliseconds
+start = np.where(np.array(file_indices) == 23)[0][0]
+end = np.where(np.array(file_indices) == 42)[0][0] + 1
+tof_values_selected_ms = tof_values_ms[start:end]
+tof_values_selected = tof_values_selected_ms / 1000
 
 
 # Fit quadratic function to x0 values
@@ -146,22 +146,32 @@ def quadratic(t, a, c):
     return a * t**2 + c
 
 
-popt_x_accel, cov_x = curve_fit(quadratic, t, x0_values[start:end])
-popt_y_accel, cov_y = curve_fit(quadratic, t, y0_values[start:end])
+popt_x_accel, cov_x = curve_fit(quadratic, tof_values_selected, x0_values[start:end])
+popt_y_accel, cov_y = curve_fit(quadratic, tof_values_selected, y0_values[start:end])
 
 # Plotting the quadratic fits
 plt.figure(figsize=(10, 5))
 plt.rcParams.update({"font.size": 14})
 plt.subplot(1, 2, 1)
-plt.plot(t_ms, x0_values[start:end], "o", label=r"$\mu_x$ measured")
-plt.plot(t_ms, quadratic(t, *popt_x_accel), label=r"$a_x t^2 + c_x$", linestyle="--")
+plt.plot(tof_values_selected_ms, x0_values[start:end], "o", label=r"$\mu_x$ measured")
+plt.plot(
+    tof_values_selected_ms,
+    quadratic(tof_values_selected, *popt_x_accel),
+    label=r"$a_x t^2 + c_x$",
+    linestyle="--",
+)
 plt.xlabel("Time (ms)")
 plt.ylabel(r"$\mu_x$")
 plt.title(r"Quadratic Fit for $\mu_x(t)$")
 plt.legend()
 plt.subplot(1, 2, 2)
-plt.plot(t_ms, y0_values[start:end], "o", label=r"$\mu_y$ measured")
-plt.plot(t_ms, quadratic(t, *popt_y_accel), label=r"$a_y t^2 + c_y$", linestyle="--")
+plt.plot(tof_values_selected_ms, y0_values[start:end], "o", label=r"$\mu_y$ measured")
+plt.plot(
+    tof_values_selected_ms,
+    quadratic(tof_values_selected, *popt_y_accel),
+    label=r"$a_y t^2 + c_y$",
+    linestyle="--",
+)
 plt.xlabel("Time (ms)")
 plt.ylabel(r"$\mu_y$")
 plt.title(r"Quadratic Fit for $\mu_y(t)$")
@@ -212,30 +222,42 @@ def sigma_evolution(t, sigma_0, T):
 
 
 popt_sigma_x, cov_sigma_x = curve_fit(
-    sigma_evolution, t, sigma_x_values_meters, p0=[0.1, 0], bounds=(0, [np.inf, np.inf])
+    sigma_evolution, tof_values_selected, sigma_x_values_meters, p0=[0.1, 0], bounds=(0, [np.inf, np.inf])
 )
 popt_sigma_y, cov_sigma_y = curve_fit(
-    sigma_evolution, t, sigma_y_values_meters, p0=[0.1, 0], bounds=(0, [np.inf, np.inf])
+    sigma_evolution, tof_values_selected, sigma_y_values_meters, p0=[0.1, 0], bounds=(0, [np.inf, np.inf])
 )
 
 # Plotting the sigma evolution
+# Plotting the quadratic fits
 plt.figure(figsize=(10, 5))
+plt.rcParams.update({"font.size": 14})
 plt.subplot(1, 2, 1)
-plt.plot(t_ms, sigma_x_values_mmeters, "o", label=r"$\sigma_x$ measured")
-plt.plot(t_ms, 1e3 * sigma_evolution(t, *popt_sigma_x), label="Fit", linestyle="--")
+plt.plot(tof_values_selected_ms, x0_values[start:end], "o", label=r"$\mu_x$ measured")
+plt.plot(
+    tof_values_selected_ms,
+    quadratic(tof_values_selected, *popt_x_accel),
+    label=r"$a_x t^2 + c_x$",
+    linestyle="--",
+)
 plt.xlabel("Time (ms)")
-plt.ylabel(r"$\sigma_x$ (mm)")
-plt.title(r"Sigma Evolution for $\sigma_x(t)$")
+plt.ylabel(r"$\mu_x$")
+plt.title(r"Quadratic Fit for $\mu_x(t)$")
 plt.legend()
 plt.subplot(1, 2, 2)
-plt.plot(t_ms, sigma_y_values_mmeters, "o", label=r"$\sigma_y$ measured")
-plt.plot(t_ms, 1e3 * sigma_evolution(t, *popt_sigma_y), label="Fit", linestyle="--")
+plt.plot(tof_values_selected_ms, y0_values[start:end], "o", label=r"$\mu_y$ measured")
+plt.plot(
+    tof_values_selected_ms,
+    quadratic(tof_values_selected, *popt_y_accel),
+    label=r"$a_y t^2 + c_y$",
+    linestyle="--",
+)
 plt.xlabel("Time (ms)")
-plt.ylabel(r"$\sigma_y$ (mm)")
-plt.title(r"Sigma Evolution for $\sigma_y(t)$")
+plt.ylabel(r"$\mu_y$")
+plt.title(r"Quadratic Fit for $\mu_y(t)$")
 plt.legend()
 plt.tight_layout()
-# plt.savefig("sigma_evolution.png", dpi=600)
+# plt.savefig("quadratic_fit_parameters.png", dpi=300)
 plt.show()
 
 T_opt = popt_sigma_x[1]
